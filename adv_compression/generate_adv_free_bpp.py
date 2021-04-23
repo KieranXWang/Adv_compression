@@ -4,13 +4,13 @@ import argparse
 
 from tensorflow.compat.v1.keras.preprocessing.image import load_img, save_img, img_to_array, array_to_img
 
-from adv_compression.adv_generator import AdvGenerator
+from adv_compression.adv_generator import AdvGeneratorTargetD
 
 
-def generate_advs_same_bpp(orig_img_dir, compression_model, checkpoint_dir, result_dir,
+def generate_advs_free_bpp(orig_img_dir, compression_model, checkpoint_dir, result_dir,
                            epsilon=1 / 255, num_steps=100, step_size=0.0001, use_grad_sign=False,
                            img_size=(512, 768, 3),
-                           reconstruction_metric='mse', kappa=1e3, tau=0., bpp_offset=0.):
+                           reconstruction_metric='mse'):
     # create result_dir if the dir does not exist yet
     if not os.path.exists(result_dir): os.makedirs(result_dir)
 
@@ -30,11 +30,10 @@ def generate_advs_same_bpp(orig_img_dir, compression_model, checkpoint_dir, resu
     img_files = [f for f in files if f.endswith(".png")]
 
     # create SubstituteGenerator object
-    adv_generator = AdvGenerator(keras_compression_model=keras_compression_model,
+    adv_generator = AdvGeneratorTargetD(keras_compression_model=keras_compression_model,
                                                epsilon=epsilon, num_steps=num_steps, step_size=step_size,
                                                use_grad_sign=use_grad_sign, img_size=img_size,
-                                               reconstruct_metric=reconstruction_metric, bpp_target=True, kappa=kappa,
-                                               tau=tau, compression_model=compression_model,
+                                               reconstruct_metric=reconstruction_metric, compression_model=compression_model,
                                                input_placeholder=input_placeholder)
 
     # generate perburbations on images
@@ -49,7 +48,7 @@ def generate_advs_same_bpp(orig_img_dir, compression_model, checkpoint_dir, resu
 
         orig_bpp = adv_generator.get_eval_bpp(sess, x_image)
         print('targeting bpp: %.4f' % orig_bpp)
-        adv_image = adv_generator.perturb(sess, orig_image=x_image, bpp_target=orig_bpp+bpp_offset)
+        adv_image = adv_generator.perturb(sess, orig_image=x_image)
 
         # save generated image
         save_path = result_dir + 'adv_' + f
@@ -72,7 +71,7 @@ def parse_args():
     parser.add_argument('--checkpoint_dir', type=str, default='../kxw_train/train/', help='dir to load trained model.')
     parser.add_argument('--result_dir', type=str, default='../EXP/test/',
                         help='dir to save generated substitute images.')
-    parser.add_argument('--epsilon', type=float, default=1, help="allowed perturbation per pixel. must in range (0,1).")
+    parser.add_argument('--epsilon', type=int, default=1, help="allowed perturbation per pixel. must in range (0,255).")
     parser.add_argument('--num_steps', type=int, default=100, help="number of steps for generating substitute images.")
     parser.add_argument('--step_size', type=float, default=0.001,
                         help="step size in gradient descent for generating substitute images")
@@ -81,11 +80,6 @@ def parse_args():
                         help="save diff images between original and subs")
     parser.add_argument('--reconstruction_metric', type=str, default='mse',
                         help="metric for reconstruction evaluation, mse or ssim.")
-    parser.add_argument('--kappa', default=1e3, type=float,
-                        help='karpa term in loss function, the strength to keeping target bpp.')
-    parser.add_argument('--tau', default=0., type=float,
-                        help='tau term in loss function, the tolerance off set to the target bpp')
-    parser.add_argument('--bpp_offset', default=0.0, type=float, help="offset to bpp target")
 
     args = parser.parse_args()
 
@@ -98,16 +92,13 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    generate_advs_same_bpp(orig_img_dir=args.orig_img_dir,
+    generate_advs_free_bpp(orig_img_dir=args.orig_img_dir,
                            compression_model=args.compression_model,
                            checkpoint_dir=args.checkpoint_dir,
                            result_dir=args.result_dir,
-                           epsilon=args.epsilon,
+                           epsilon=args.epsilon / 255,
                            num_steps=args.num_steps,
                            step_size=args.step_size,
                            use_grad_sign=args.use_grad_sign,
                            img_size=args.img_size,
-                           reconstruction_metric=args.reconstruction_metric,
-                           kappa=args.kappa,
-                           tau=args.tau,
-                           bpp_offset=args.bpp_offset)
+                           reconstruction_metric=args.reconstruction_metric)
